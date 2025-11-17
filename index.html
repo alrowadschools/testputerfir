@@ -1,10 +1,13 @@
 <html>
 <body>
     <script src="https://js.puter.com/v2/"></script>
+    <img src="https://assets.puter.site/doge.jpeg" id="image">
     <script>
-        puter.ai.chat("Explain the concept of black holes in simple terms", {
-            model: 'google/gemini-2.5-flash'
-        }).then(response => {
+        puter.ai.chat(
+            "What do you see in this image?",
+            "https://assets.puter.site/doge.jpeg",
+            { model: 'google/gemini-2.5-flash' }
+        ).then(response => {
             puter.print(response);
         });
     </script>
