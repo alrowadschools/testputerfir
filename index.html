@@ -1,16 +1,1741 @@
-<html>
-<body>
-    <script src="https://js.puter.com/v2/"></script>
-    <img src="https://upload.wikimedia.org/wikipedia/commons/5/55/Photosynthesis_en.svg" id="image">
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Quiz Generator</title>
+    <script src="https://unpkg.com/compromise"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-        puter.ai.chat(
-            "What do you see in this image?",
-            "https://upload.wikimedia.org/wikipedia/commons/5/55/Photosynthesis_en.svg",
-            { model: 'google/gemini-2.5-flash' }
-        ).then(response => {
-            puter.print(response);
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { 900: '#0f172a', 800: '#1e293b', 700: '#334155', 600: '#475569' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slide-in { animation: slideIn 0.5s ease-out forwards; }
+        .draggable { cursor: move; transition: all 0.2s; }
+        .draggable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .draggable.dragging { opacity: 0.5; transform: scale(0.95); }
+        .drop-zone { transition: all 0.3s; border: 2px dashed #475569; }
+        .drop-zone.drag-over { background-color: rgba(59, 130, 246, 0.2); border-color: #3b82f6; }
+        .drop-zone.correct { background-color: rgba(34, 197, 94, 0.2); border-color: #22c55e; }
+        .drop-zone.incorrect { background-color: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .gradient-bg { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #2563eb 100%); }
+        .keyword-chip { transition: all 0.3s; position: relative; overflow: hidden; }
+        .keyword-chip:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4); }
+        .keyword-chip::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transition: left 0.5s; }
+        .keyword-chip:hover::before { left: 100%; }
+        .sentence-card { border-left: 4px solid #334155; }
+        .sentence-card.has-keywords { border-left-color: #22c55e; }
+        #matchingCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; }
+        .matching-item { position: relative; z-index: 20; cursor: pointer; transition: all 0.2s; }
+        .matching-item:hover { transform: translateX(5px); }
+        .matching-item.selected { background-color: rgba(99, 102, 241, 0.3); border-color: #6366f1; box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
+        .matching-item.matched { background-color: rgba(34, 197, 94, 0.2); border-color: #22c55e; }
+        .matching-target { position: relative; z-index: 20; cursor: pointer; transition: all 0.2s; }
+        .matching-target:hover { transform: translateX(-5px); }
+        .matching-target.selected { background-color: rgba(99, 102, 241, 0.3); border-color: #6366f1; box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
+        .matching-target.matched { background-color: rgba(34, 197, 94, 0.2); border-color: #22c55e; }
+        .glow-text { text-shadow: 0 0 20px rgba(99, 102, 241, 0.5); }
+        .glow-box { box-shadow: 0 0 30px rgba(99, 102, 241, 0.2); }
+        .hidden-details { display: none; }
+        .file-drop-zone { border: 2px dashed #475569; transition: all 0.3s; }
+        .file-drop-zone.drag-over { border-color: #6366f1; background-color: rgba(99, 102, 241, 0.1); }
+        .loading-spinner { border: 3px solid rgba(255,255,255,0.1); border-left-color: #6366f1; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .cleaning-log { font-family: monospace; font-size: 12px; line-height: 1.5; }
+        .cleaning-log .removed { color: #ef4444; }
+        .cleaning-log .kept { color: #22c55e; }
+        .preview-heading { color: #fbbf24; font-weight: bold; font-size: 1.1em; margin-top: 16px; margin-bottom: 8px; border-bottom: 1px solid #475569; padding-bottom: 4px; }
+        .preview-para { color: #e2e8f0; line-height: 1.6; margin-bottom: 12px; }
+        .preview-image { max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0; border: 1px solid #475569; }
+        .bold-keyword { font-weight: bold; color: #818cf8; }
+        /* Style for extracted bold keywords */
+        .extracted-bold { background-color: rgba(129, 140, 248, 0.2); color: #818cf8; font-weight: 600; padding: 2px 4px; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-dark-900 text-slate-200 min-h-screen" onload="autoLoadSample()">
+
+    <header class="gradient-bg text-white shadow-lg relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse"></div>
+        <div class="container mx-auto px-6 py-6 relative z-10">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm glow-box">
+                        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold tracking-tight glow-text">Smart Quiz Generator</h1>
+                        <p class="text-white/80 text-sm font-medium">Uses Bolded Keywords • PDF/DOCX • Structured Preview</p>
+                    </div>
+                </div>
+                <button onclick="saveAsPDF()" class="no-print bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2 backdrop-blur-sm border border-white/20">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Save as PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 py-8 max-w-6xl" id="quizContent">
+        
+        <!-- File Upload Section -->
+        <section class="mb-8 animate-slide-in no-print">
+            <div class="glass rounded-2xl shadow-xl p-6 glow-box">
+                <h2 class="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    Document Upload
+                </h2>
+                
+                <div id="fileDropZone" class="file-drop-zone rounded-xl p-8 text-center cursor-pointer mb-4 bg-dark-800/50 hover:bg-dark-800 transition" onclick="document.getElementById('fileInput').click()">
+                    <input type="file" id="fileInput" accept=".pdf,.docx,.doc" class="hidden" onchange="handleFileSelect(event)">
+                    <svg class="w-12 h-12 text-slate-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-slate-400 font-medium">Drop PDF or Word document here</p>
+                    <p class="text-slate-500 text-sm mt-1">or click to browse</p>
+                    <p class="text-slate-600 text-xs mt-2">Supports: .pdf, .docx, .doc</p>
+                </div>
+
+                <div class="flex items-center gap-3 p-4 bg-dark-800/30 rounded-lg border border-dark-600">
+                    <div class="flex-1">
+                        <p class="text-sm text-slate-300 font-medium">WEEK 2.docx</p>
+                        <p class="text-xs text-slate-500">Auto-loaded on startup</p>
+                    </div>
+                    <button onclick="reloadSample()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Reload Sample
+                    </button>
+                </div>
+
+                <div id="uploadLoading" class="hidden mt-4 flex items-center gap-3 text-indigo-400">
+                    <div class="loading-spinner"></div>
+                    <span class="text-sm">Processing document...</span>
+                </div>
+
+                <div id="extractionStatus" class="hidden mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
+                    ✓ Document processed successfully
+                </div>
+            </div>
+        </section>
+
+        <!-- Structured Preview Section -->
+        <section id="previewSection" class="mb-8 hidden animate-slide-in">
+            <div class="glass rounded-2xl shadow-xl p-6 border border-dark-600 glow-box">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Document Preview (Editable)
+                    </h2>
+                    <span class="text-xs text-slate-500 bg-dark-800 px-2 py-1 rounded">Edit content below</span>
+                </div>
+                <div id="structuredPreview" class="max-h-96 overflow-y-auto p-4 bg-dark-800/50 rounded-lg border border-dark-600" contenteditable="true">
+                    <!-- Structured content will appear here -->
+                </div>
+                <button onclick="updateFromPreview()" class="mt-3 w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg text-sm font-medium transition">
+                    Update Quiz from Edited Content
+                </button>
+            </div>
+        </section>
+
+        <!-- Input Section -->
+        <section class="mb-8 animate-slide-in no-print">
+            <div class="glass rounded-2xl shadow-xl p-6 glow-box">
+                <div class="flex items-center justify-between mb-4">
+                    <label class="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                        Cleaned Prose Text
+                    </label>
+                    <div class="flex gap-2">
+                        <button onclick="loadSample()" class="text-sm text-indigo-400 hover:text-indigo-300 font-medium px-3 py-1 rounded-lg hover:bg-indigo-500/20 transition">Load Sample Text</button>
+                        <button onclick="clearAll()" class="text-sm text-slate-400 hover:text-slate-300 font-medium px-3 py-1 rounded-lg hover:bg-slate-700 transition">Clear</button>
+                    </div>
+                </div>
+                <textarea id="inputText" class="w-full h-48 p-4 rounded-xl bg-dark-800 border border-dark-600 text-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none leading-relaxed transition-all placeholder-slate-500" placeholder="Cleaned prose text will appear here..."></textarea>
+                <div class="mt-4 flex justify-between items-center">
+                    <div class="text-sm text-slate-400" id="charCount">0 characters</div>
+                    <button onclick="processText()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/30 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        Generate Quiz
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Section -->
+        <section id="statsSection" class="mb-6 hidden animate-slide-in">
+            <div class="grid grid-cols-4 gap-4">
+                <div class="glass rounded-xl p-4 shadow-lg border border-dark-600">
+                    <p class="text-sm text-slate-400">Total Sentences</p>
+                    <p class="text-2xl font-bold text-white" id="sentenceCount">0</p>
+                </div>
+                <div class="glass rounded-xl p-4 shadow-lg border border-dark-600">
+                    <p class="text-sm text-slate-400">Bolded Keywords</p>
+                    <p class="text-2xl font-bold text-indigo-400" id="keywordCount">0</p>
+                </div>
+                <div class="glass rounded-xl p-4 shadow-lg border border-dark-600">
+                    <p class="text-sm text-slate-400">Coverage</p>
+                    <p class="text-2xl font-bold text-green-400" id="coverage">0%</p>
+                </div>
+                <div class="glass rounded-xl p-4 shadow-lg border border-dark-600">
+                    <p class="text-sm text-slate-400">Questions</p>
+                    <p class="text-2xl font-bold text-purple-400" id="questionCount">0</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Keywords Display Section -->
+        <section id="keywordsDisplaySection" class="mb-8 hidden animate-slide-in">
+            <div class="glass rounded-2xl shadow-xl p-8 border border-dark-600 glow-box relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                    <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                    </svg>
+                    Extracted Bolded Keywords
+                    <span class="text-sm font-normal text-slate-400 bg-dark-800 px-3 py-1 rounded-full border border-dark-600" id="totalKeywordsBadge">0 total</span>
+                </h2>
+                <div id="keywordsCloud" class="flex flex-wrap gap-3 justify-center"></div>
+            </div>
+        </section>
+
+        <!-- Hidden Keywords Details -->
+        <section id="keywordsSection" class="mb-8 hidden hidden-details">
+            <div class="glass rounded-2xl shadow-xl p-6 border border-dark-600">
+                <h2 class="text-xl font-bold text-white mb-4">Keywords by Sentence</h2>
+                <div id="keywordsContainer" class="space-y-3"></div>
+            </div>
+        </section>
+
+        <!-- Quiz Section -->
+        <section id="quizSection" class="hidden animate-slide-in">
+            <div class="flex space-x-1 rounded-xl bg-dark-800 p-1 mb-6 border border-dark-600 no-print">
+                <button onclick="switchTab('mcq')" id="tab-mcq" class="flex-1 rounded-lg py-2.5 px-4 text-sm font-medium text-indigo-300 bg-dark-700 shadow border border-dark-600">Multiple Choice</button>
+                <button onclick="switchTab('matching')" id="tab-matching" class="flex-1 rounded-lg py-2.5 px-4 text-sm font-medium text-slate-400 hover:bg-dark-700/50 hover:text-slate-200 transition">Matching</button>
+                <button onclick="switchTab('dragdrop')" id="tab-dragdrop" class="flex-1 rounded-lg py-2.5 px-4 text-sm font-medium text-slate-400 hover:bg-dark-700/50 hover:text-slate-200 transition">Drag & Drop</button>
+            </div>
+
+            <div id="content-mcq" class="space-y-4">
+                <div class="flex justify-between items-center mb-4 no-print">
+                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                        <span class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-sm">A</span>
+                        Multiple Choice Questions
+                    </h3>
+                    <span class="text-sm font-bold text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full" id="mcq-score">Score: 0/0</span>
+                </div>
+                <div id="mcqContainer" class="space-y-4"></div>
+            </div>
+
+            <div id="content-matching" class="hidden">
+                <div class="flex justify-between items-center mb-4 no-print">
+                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                        <span class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center text-sm">B</span>
+                        Connect the Matching Pairs
+                    </h3>
+                    <div class="flex gap-2">
+                        <button onclick="clearMatching()" class="bg-dark-700 hover:bg-dark-600 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition border border-dark-600">Clear Lines</button>
+                        <button onclick="checkMatchingLines()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-lg shadow-purple-500/20">Check Answers</button>
+                    </div>
+                </div>
+                <div class="glass rounded-2xl p-6 border border-dark-600 relative" id="matchingArea" style="min-height: 500px;">
+                    <canvas id="matchingCanvas"></canvas>
+                    <div class="grid grid-cols-2 gap-12 relative z-20">
+                        <div id="matchingLeft" class="space-y-4"></div>
+                        <div id="matchingRight" class="space-y-4"></div>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-400 mt-3 text-center no-print">Click a keyword on the left, then click its matching description on the right.</p>
+            </div>
+
+            <div id="content-dragdrop" class="hidden">
+                <div class="flex justify-between items-center mb-4 no-print">
+                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                        <span class="w-8 h-8 rounded-lg bg-green-500/20 text-green-400 flex items-center justify-center text-sm">C</span>
+                        Fill in the Blanks
+                    </h3>
+                    <button onclick="checkDragDrop()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-lg shadow-green-500/20">Verify Answers</button>
+                </div>
+                <div class="glass rounded-2xl p-6 border border-dark-600 glow-box">
+                    <div id="dragDropContainer" class="space-y-6"></div>
+                    <div class="mt-6 pt-6 border-t border-dark-600">
+                        <p class="text-sm font-medium text-slate-400 mb-3">Word Bank:</p>
+                        <div id="draggablesContainer" class="flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let extractedKeywords = [];
+        let allKeywordsFlat = [];
+        let currentTab = 'mcq';
+        let mcqAnswers = {};
+        let matchingLines = [];
+        let selectedLeft = null;
+        let canvas, ctx;
+        let matchingPairs = [];
+        let currentRawContent = '';
+        let boldedKeywords = []; // Store bolded keywords from document
+        let usedKeywords = new Set(); // Track used keywords to avoid repetition
+        let usedSentencesForMCQ = new Set(); // Track sentences used for MCQ to avoid repetition
+        let usedSentencesForMatching = new Set(); // Track sentences used for Matching
+        let usedSentencesForDragDrop = new Set(); // Track sentences used for Drag & Drop
+
+        const SAMPLE_IMAGE_URL = 'https://png.pngtree.com/png-clipart/20191120/original/pngtree-computer-icon-png-image_5064191.jpg';
+
+        // Auto-load sample on page load
+        function autoLoadSample() {
+            setTimeout(() => {
+                loadSampleFile();
+            }, 500);
+        }
+
+        function reloadSample() {
+            loadSampleFile();
+        }
+
+        const fileDropZone = document.getElementById('fileDropZone');
+        
+        fileDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileDropZone.classList.add('drag-over');
+        });
+        
+        fileDropZone.addEventListener('dragleave', () => {
+            fileDropZone.classList.remove('drag-over');
+        });
+        
+        fileDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileDropZone.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processFile(files[0]);
+            }
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processFile(file);
+            }
+        }
+
+        function isExcludedHeading(text) {
+            const lower = text.toLowerCase().trim();
+            const headingPatterns = [
+                /^#?\s*lesson\s*plan/i,
+                /^#?\s*starter/i,
+                /^#?\s*lesson\s*objectives/i,
+                /^#?\s*introduction/i,
+                /^#?\s*conclusion/i,
+                /^#?\s*summary/i,
+                /^#?\s*assessment/i,
+                /^#?\s*homework/i,
+                /^#?\s*activity/i,
+                /^#?\s*resources/i,
+                /^#?\s*materials/i,
+                /^#?\s*procedure/i,
+                /^#?\s*evaluation/i,
+                /^#?\s*notes/i,
+                /^#?\s*teacher/i,
+                /^#?\s*student/i,
+                /^#?\s*class/i,
+                /^#?\s*period/i,
+                /^#?\s*duration/i,
+                /^#?\s*subject/i,
+                /^#?\s*topic/i,
+                /^#?\s*unit/i,
+                /^#?\s*module/i,
+                /^#?\s*chapter/i,
+                /^#?\s*section/i,
+                /^#?\s*part/i,
+                /^#?\s*stage/i,
+                /^#?\s*step/i,
+                /^#?\s*task/i,
+                /^#?\s*exercise/i,
+                /^#?\s*worksheet/i,
+                /^#?\s*appendix/i,
+                /^#?\s*reference/i,
+                /^#?\s*bibliography/i,
+            ];
+            
+            return headingPatterns.some(pattern => pattern.test(lower));
+        }
+
+        function isProseParagraph(text) {
+            const trimmed = text.trim();
+            
+            // Exclude headings first
+            if (isExcludedHeading(trimmed)) return false;
+            
+            if (trimmed.length < 30 || trimmed.length > 1000) return false;
+            if (!/[.!?]$/.test(trimmed)) return false;
+            
+            const headingPatterns = [
+                /^#{1,6}\s+/i,
+                /^\d+[\.)]\s*\w+/i,
+                /^\d+\.\d+[\.)]\s*\w+/i,
+                /^(chapter|unit|lesson|section|module|part)\s*\d+/i,
+                /^(figure|table|diagram|chart|image)\s*\d+/i,
+                /^(abstract|introduction|conclusion|references|bibliography|appendix)/i,
+                /^[A-Z][A-Z\s]{2,}$/,
+                /^\d+\s+[A-Z]/,
+            ];
+            
+            for (let pattern of headingPatterns) {
+                if (pattern.test(trimmed)) return false;
+            }
+            
+            const listPatterns = [
+                /^[\s]*[•\-\*–—○◆▪▫►▸▹]+[\s]+/,
+                /^[\s]*\d+[\.)]\s+/,
+                /^[\s]*[a-zA-Z][\.)]\s+/,
+                /^[\s]*[ivxIVX]+[\.)]\s+/,
+                /^[\s]*\(\d+\)\s+/,
+                /^[\s]*\([a-zA-Z]\)\s+/,
+            ];
+            
+            for (let pattern of listPatterns) {
+                if (pattern.test(trimmed)) return false;
+            }
+            
+            const words = trimmed.split(/\s+/);
+            if (words.length < 5) return false;
+            
+            if (!/^[A-Z]/.test(trimmed)) return false;
+            
+            const avgWordLength = trimmed.replace(/[^\w]/g, '').length / words.length;
+            if (avgWordLength < 3 || avgWordLength > 15) return false;
+            
+            const proseIndicators = /\b(the|a|an|is|are|was|were|has|have|had|do|does|did|will|would|could|should|may|might|can|this|that|these|those|with|from|into|through|during|before|after|above|below|between|under|over)\b/i;
+            if (!proseIndicators.test(trimmed)) return false;
+            
+            const metadataPatterns = [
+                /^(page|pg\.|p\.)\s*\d+/i,
+                /^(author|written by|prepared by|submitted by)/i,
+                /^(school|university|college|institute|department)/i,
+                /^(date|year|semester|term|session)/i,
+                /^(copyright|all rights reserved|trademark)/i,
+                /^(email|phone|tel|fax|address)/i,
+                /^(www\.|http|@)/i,
+            ];
+            
+            for (let pattern of metadataPatterns) {
+                if (pattern.test(trimmed)) return false;
+            }
+            
+            return true;
+        }
+
+        function parseStructuredContent(rawText) {
+            const lines = rawText.split(/\n/);
+            const sections = [];
+            let currentHeading = 'General Content';
+            let currentParagraphs = [];
+            
+            for (let line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                // Check if it's a heading
+                if (/^#{1,6}\s*/.test(trimmed) || 
+                    /^[A-Z][A-Z\s]{2,}$/.test(trimmed) ||
+                    /^(LESSON|STARTER|INTRODUCTION|CONCLUSION|SUMMARY|ASSESSMENT)/i.test(trimmed)) {
+                    
+                    // Save previous section
+                    if (currentParagraphs.length > 0) {
+                        sections.push({
+                            heading: currentHeading,
+                            paragraphs: [...currentParagraphs]
+                        });
+                        currentParagraphs = [];
+                    }
+                    
+                    // Clean heading (remove #)
+                    currentHeading = trimmed.replace(/^#{1,6}\s*/, '').trim();
+                } else {
+                    currentParagraphs.push(trimmed);
+                }
+            }
+            
+            // Save last section
+            if (currentParagraphs.length > 0 || sections.length === 0) {
+                sections.push({
+                    heading: currentHeading,
+                    paragraphs: currentParagraphs
+                });
+            }
+            
+            return sections;
+        }
+
+        function renderStructuredPreview(sections) {
+            const preview = document.getElementById('structuredPreview');
+            preview.innerHTML = '';
+            
+            sections.forEach((section, idx) => {
+                // Heading
+                const headingDiv = document.createElement('div');
+                headingDiv.className = 'preview-heading';
+                headingDiv.textContent = section.heading || `Section ${idx + 1}`;
+                preview.appendChild(headingDiv);
+                
+                // Paragraphs and images
+                if (section.paragraphs.length === 0) {
+                    const paraDiv = document.createElement('div');
+                    paraDiv.className = 'preview-para';
+                    paraDiv.textContent = '(No content)';
+                    preview.appendChild(paraDiv);
+                    
+                    // Add sample image
+                    const img = document.createElement('img');
+                    img.src = SAMPLE_IMAGE_URL;
+                    img.className = 'preview-image';
+                    img.alt = 'Sample';
+                    preview.appendChild(img);
+                } else {
+                    section.paragraphs.forEach((para, pIdx) => {
+                        const paraDiv = document.createElement('div');
+                        paraDiv.className = 'preview-para';
+                        // Highlight bolded keywords in preview
+                        let highlightedPara = para;
+                        boldedKeywords.forEach(keyword => {
+                            const regex = new RegExp(`\\b(${keyword})\\b`, 'gi');
+                            highlightedPara = highlightedPara.replace(regex, '<span class="extracted-bold">$1</span>');
+                        });
+                        paraDiv.innerHTML = highlightedPara;
+                        preview.appendChild(paraDiv);
+                        
+                        // Add image after each paragraph
+                        const img = document.createElement('img');
+                        img.src = SAMPLE_IMAGE_URL;
+                        img.className = 'preview-image';
+                        img.alt = 'Sample';
+                        preview.appendChild(img);
+                    });
+                }
+            });
+            
+            document.getElementById('previewSection').classList.remove('hidden');
+        }
+
+        // Function to extract bolded text from HTML (for Word documents with formatting)
+        function extractBoldedKeywordsFromHTML(html) {
+            const foundKeywords = new Set();
+            
+            // Create a temporary div to parse HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            
+            // Find all bold elements
+            const boldElements = tempDiv.querySelectorAll('b, strong, span[style*="font-weight:bold"], span[style*="font-weight: bold"]');
+            
+            boldElements.forEach(element => {
+                const text = element.textContent.trim();
+                if (text && text.length > 1) {
+                    // Clean the text - remove punctuation at the end
+                    const cleaned = text.replace(/[.,;:!?]+$/, '').trim();
+                    if (cleaned.length > 1) {
+                        // Keep multi-word phrases as-is
+                        foundKeywords.add(cleaned.toLowerCase());
+                    }
+                }
+            });
+            
+            // Remove common words
+            const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+            commonWords.forEach(word => {
+                foundKeywords.delete(word);
+            });
+            
+            return Array.from(foundKeywords);
+        }
+
+        // Function to extract text with bold formatting preserved as markers
+        async function extractWordTextWithFormatting(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            
+            // Use Mammoth to convert to HTML to preserve formatting
+            const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+            
+            // Extract plain text (for the textarea)
+            const plainTextResult = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+            
+            return {
+                html: result.value, // HTML with formatting
+                text: plainTextResult.value // Plain text
+            };
+        }
+
+        function cleanAndFilterProse(plainText, boldedKeywords) {
+            const sections = parseStructuredContent(plainText);
+            
+            // Render preview with highlighted keywords
+            renderStructuredPreview(sections);
+            
+            const paragraphs = [];
+            
+            sections.forEach(section => {
+                // Skip excluded headings
+                if (isExcludedHeading(section.heading)) {
+                    return;
+                }
+                
+                section.paragraphs.forEach(para => {
+                    if (isProseParagraph(para)) {
+                        paragraphs.push(para);
+                    }
+                });
+            });
+            
+            return paragraphs.join('\n\n');
+        }
+
+        async function processFile(file) {
+            const loading = document.getElementById('uploadLoading');
+            const status = document.getElementById('extractionStatus');
+            
+            loading.classList.remove('hidden');
+            status.classList.add('hidden');
+            
+            try {
+                const extension = file.name.split('.').pop().toLowerCase();
+                let plainText = '';
+                
+                if (extension === 'pdf') {
+                    plainText = await extractPDFText(file);
+                    // For PDFs, we can't easily detect bold formatting
+                    // So we'll use a fallback method
+                    boldedKeywords = extractPotentialKeywordsFromText(plainText);
+                } else if (extension === 'docx' || extension === 'doc') {
+                    // For Word documents, extract both HTML and plain text
+                    const result = await extractWordTextWithFormatting(file);
+                    plainText = result.text;
+                    
+                    // Extract bolded keywords from HTML
+                    boldedKeywords = extractBoldedKeywordsFromHTML(result.html);
+                    
+                    console.log('Extracted bolded keywords from Word doc:', boldedKeywords);
+                } else {
+                    alert('Unsupported file format. Please upload PDF or Word document.');
+                    loading.classList.add('hidden');
+                    return;
+                }
+                
+                currentRawContent = plainText;
+                const proseText = cleanAndFilterProse(plainText, boldedKeywords);
+                
+                if (!proseText || proseText.trim().length < 50) {
+                    alert('No valid prose paragraphs found in document.');
+                    loading.classList.add('hidden');
+                    return;
+                }
+                
+                document.getElementById('inputText').value = proseText;
+                document.getElementById('charCount').textContent = proseText.length + ' characters';
+                
+                status.classList.remove('hidden');
+                setTimeout(() => status.classList.add('hidden'), 3000);
+                
+            } catch (error) {
+                console.error('Extraction error:', error);
+                alert('Error extracting text from file: ' + error.message);
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        // Fallback method for PDFs or when no bold formatting is detected
+        function extractPotentialKeywordsFromText(text) {
+            const foundKeywords = new Set();
+            
+            // Look for ALL CAPS words (often used for emphasis)
+            const allCapsPattern = /\b([A-Z][A-Z]{2,})\b/g;
+            let match;
+            while ((match = allCapsPattern.exec(text)) !== null) {
+                const word = match[1].toLowerCase();
+                if (word.length > 2) {
+                    foundKeywords.add(word);
+                }
+            }
+            
+            // Look for phrases in parentheses (often definitions)
+            const parenPattern = /\(([^)]+)\)/g;
+            while ((match = parenPattern.exec(text)) !== null) {
+                const phrase = match[1].trim();
+                if (phrase.length > 3 && phrase.length < 50) {
+                    foundKeywords.add(phrase.toLowerCase());
+                }
+            }
+            
+            // Look for terms after "called", "known as", "referred to as"
+            const definitionPatterns = [
+                /(?:called|known as|referred to as|termed)\s+([^.,;!?]+)/gi,
+                /(?:is|are|was|were)\s+([^.,;!?]+)/gi
+            ];
+            
+            definitionPatterns.forEach(pattern => {
+                while ((match = pattern.exec(text)) !== null) {
+                    const term = match[1].trim();
+                    if (term.length > 3 && term.length < 30) {
+                        foundKeywords.add(term.toLowerCase());
+                    }
+                }
+            });
+            
+            return Array.from(foundKeywords);
+        }
+
+        async function extractPDFText(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                
+                // Process items to preserve some structure
+                let lastY = null;
+                let lineText = '';
+                
+                textContent.items.forEach(item => {
+                    if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+                        fullText += lineText + '\n';
+                        lineText = '';
+                    }
+                    lineText += item.str + ' ';
+                    lastY = item.transform[5];
+                });
+                
+                if (lineText) {
+                    fullText += lineText + '\n';
+                }
+                
+                fullText += '\n';
+            }
+            
+            return fullText;
+        }
+
+        async function loadSampleFile() {
+            const loading = document.getElementById('uploadLoading');
+            const status = document.getElementById('extractionStatus');
+            
+            loading.classList.remove('hidden');
+            status.classList.add('hidden');
+            
+            try {
+                // For sample, use the hardcoded sample text with **bold** markers
+                const sampleText = "**Photosynthesis** is the process used by plants to convert sunlight into chemical energy. **Chlorophyll** is the green pigment that captures light energy. The process takes place in **chloroplasts**. There are two stages: the light reactions and the **Calvin cycle**. During the light reactions, water molecules are split to produce **oxygen gas**. The Calvin cycle uses **carbon dioxide** from the atmosphere to make **glucose**. **ATP** and **NADPH** are energy carriers produced during the light reactions. The **thylakoid membranes** contain photosystems that absorb sunlight. **Cellular respiration** is another important process. **Mitochondria** are the powerhouses of the cell. The **Krebs cycle** produces energy molecules. **Electron transport chain** is the final stage.";
+                
+                // Extract bolded keywords from sample
+                boldedKeywords = extractBoldedKeywordsFromSample(sampleText);
+                
+                const proseText = cleanAndFilterProse(sampleText, boldedKeywords);
+                
+                if (!proseText || proseText.trim().length < 50) {
+                    alert('No valid prose found in sample.');
+                    loading.classList.add('hidden');
+                    return;
+                }
+                
+                document.getElementById('inputText').value = sampleText;
+                document.getElementById('charCount').textContent = sampleText.length + ' characters';
+                
+                status.classList.remove('hidden');
+                setTimeout(() => status.classList.add('hidden'), 3000);
+                
+            } catch (error) {
+                console.error('Sample load error:', error);
+                alert('Could not load sample: ' + error.message);
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function extractBoldedKeywordsFromSample(text) {
+            const foundKeywords = new Set();
+            
+            // Extract **bold** markers from sample text
+            const boldPattern = /\*\*([^*]+)\*\*/g;
+            let match;
+            while ((match = boldPattern.exec(text)) !== null) {
+                const keyword = match[1].trim();
+                if (keyword.length > 1) {
+                    foundKeywords.add(keyword.toLowerCase());
+                }
+            }
+            
+            return Array.from(foundKeywords);
+        }
+
+        function updateFromPreview() {
+            const preview = document.getElementById('structuredPreview');
+            const sections = [];
+            let currentHeading = '';
+            let currentParagraphs = [];
+            
+            Array.from(preview.children).forEach(child => {
+                if (child.classList.contains('preview-heading')) {
+                    if (currentHeading) {
+                        sections.push({
+                            heading: currentHeading,
+                            paragraphs: [...currentParagraphs]
+                        });
+                    }
+                    currentHeading = child.textContent;
+                    currentParagraphs = [];
+                } else if (child.classList.contains('preview-para')) {
+                    const text = child.textContent.trim();
+                    if (text && text !== '(No content)') {
+                        currentParagraphs.push(text);
+                    }
+                }
+            });
+            
+            // Save last section
+            if (currentHeading) {
+                sections.push({
+                    heading: currentHeading,
+                    paragraphs: currentParagraphs
+                });
+            }
+            
+            // Re-process
+            const paragraphs = [];
+            sections.forEach(section => {
+                if (isExcludedHeading(section.heading)) return;
+                section.paragraphs.forEach(para => {
+                    if (isProseParagraph(para)) {
+                        paragraphs.push(para);
+                    }
+                });
+            });
+            
+            const proseText = paragraphs.join('\n\n');
+            document.getElementById('inputText').value = proseText;
+            document.getElementById('charCount').textContent = proseText.length + ' characters';
+            
+            alert('Content updated! Click "Generate Quiz" to create new questions.');
+        }
+
+        document.getElementById('inputText').addEventListener('input', function(e) {
+            document.getElementById('charCount').textContent = e.target.value.length + ' characters';
+        });
+
+        function loadSample() {
+            const sample = "**Photosynthesis** is the process used by plants to convert sunlight into chemical energy. **Chlorophyll** is the green pigment that captures light energy. The process takes place in **chloroplasts**. There are two stages: the light reactions and the **Calvin cycle**. During the light reactions, water molecules are split to produce **oxygen gas**. The Calvin cycle uses **carbon dioxide** from the atmosphere to make **glucose**. **ATP** and **NADPH** are energy carriers produced during the light reactions. The **thylakoid membranes** contain photosystems that absorb sunlight. **Cellular respiration** is another important process. **Mitochondria** are the powerhouses of the cell. The **Krebs cycle** produces energy molecules. **Electron transport chain** is the final stage.";
+            document.getElementById('inputText').value = sample;
+            document.getElementById('charCount').textContent = sample.length + ' characters';
+            
+            // Extract bolded keywords from sample
+            boldedKeywords = extractBoldedKeywordsFromSample(sample);
+        }
+
+        function clearAll() {
+            document.getElementById('inputText').value = '';
+            document.getElementById('charCount').textContent = '0 characters';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('keywordsSection').classList.add('hidden');
+            document.getElementById('keywordsDisplaySection').classList.add('hidden');
+            document.getElementById('quizSection').classList.add('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('previewSection').classList.add('hidden');
+            extractedKeywords = [];
+            allKeywordsFlat = [];
+            boldedKeywords = [];
+            matchingLines = [];
+            selectedLeft = null;
+            currentRawContent = '';
+            usedKeywords = new Set();
+            usedSentencesForMCQ = new Set();
+            usedSentencesForMatching = new Set();
+            usedSentencesForDragDrop = new Set();
+        }
+
+        function cleanPhrase(phrase) {
+            if (!phrase) return '';
+            let cleaned = phrase.toLowerCase().trim();
+            cleaned = cleaned.replace(/^(the|a|an|their|its|his|her|our|your|my|this|that|these|those)\s+/i, '');
+            cleaned = cleaned.replace(/\s*(,|\.|;|:|!|\?|and|or|but)\s*$/i, '');
+            return cleaned.trim();
+        }
+
+        function boldKeywordsInParagraph(paragraph, keywords) {
+            let result = paragraph;
+            keywords.forEach(keyword => {
+                // Escape special regex characters in keyword
+                const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`\\b(${escapedKeyword})\\b`, 'gi');
+                result = result.replace(regex, '<span class="bold-keyword">$1</span>');
+            });
+            return result;
+        }
+
+        function processText() {
+            const text = document.getElementById('inputText').value.trim();
+            if (text.length < 50) {
+                alert('Please enter at least 50 characters of text.');
+                return;
+            }
+
+            const doc = nlp(text);
+            const sentences = doc.sentences().json();
+            
+            // Reset tracking sets
+            extractedKeywords = [];
+            allKeywordsFlat = [];
+            usedKeywords = new Set();
+            usedSentencesForMCQ = new Set();
+            usedSentencesForMatching = new Set();
+            usedSentencesForDragDrop = new Set();
+            
+            // If we have bolded keywords from document extraction, use them
+            // Otherwise, extract from the text using **bold** markers
+            let keywordsToUse = boldedKeywords;
+            if (keywordsToUse.length === 0) {
+                // Extract **bold** markers from the text
+                const boldPattern = /\*\*([^*]+)\*\*/g;
+                let match;
+                while ((match = boldPattern.exec(text)) !== null) {
+                    const keyword = match[1].trim().toLowerCase();
+                    if (keyword.length > 1) {
+                        keywordsToUse.push(keyword);
+                    }
+                }
+            }
+            
+            // If still no keywords, show error
+            if (keywordsToUse.length === 0) {
+                alert('No bolded keywords found. Please:\n1. Upload a Word document with bold formatting\n2. Or use **bold** markers in your text\n3. Or manually add bolded terms to the text area');
+                return;
+            }
+            
+            // Assign up to 2 keywords to each sentence where they appear
+            sentences.forEach((sent, index) => {
+                const sentText = sent.text;
+                const sentenceKeywords = [];
+                
+                // Check which keywords appear in this sentence
+                keywordsToUse.forEach(keyword => {
+                    // Check if keyword is not already used
+                    if (!usedKeywords.has(keyword) && sentenceKeywords.length < 2) {
+                        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+                        if (regex.test(sentText)) {
+                            sentenceKeywords.push(keyword);
+                            usedKeywords.add(keyword);
+                        }
+                    }
+                });
+                
+                // Only add if we found keywords in this sentence
+                if (sentenceKeywords.length > 0) {
+                    extractedKeywords.push({
+                        sentenceIndex: index,
+                        sentence: sentText,
+                        keywords: sentenceKeywords
+                    });
+                    allKeywordsFlat.push(...sentenceKeywords);
+                }
+            });
+            
+            // Remove duplicates from allKeywordsFlat
+            allKeywordsFlat = [...new Set(allKeywordsFlat)];
+            
+            document.getElementById('sentenceCount').textContent = sentences.length;
+            document.getElementById('keywordCount').textContent = allKeywordsFlat.length;
+            document.getElementById('totalKeywordsBadge').textContent = allKeywordsFlat.length + ' total';
+            const coverage = sentences.length > 0 ? Math.round((extractedKeywords.length / sentences.length) * 100) : 0;
+            document.getElementById('coverage').textContent = coverage + '%';
+            document.getElementById('questionCount').textContent = allKeywordsFlat.length;
+
+            if (allKeywordsFlat.length < 3) {
+                alert('Not enough bolded keywords found to generate a quiz. Please ensure your document has at least 3 bolded terms.');
+                return;
+            }
+
+            displayKeywords();
+            displayKeywordsCloud();
+            generateMCQs();
+            generateMatching();
+            generateDragDrop();
+
+            document.getElementById('statsSection').classList.remove('hidden');
+            document.getElementById('keywordsSection').classList.remove('hidden');
+            document.getElementById('keywordsDisplaySection').classList.remove('hidden');
+            document.getElementById('quizSection').classList.remove('hidden');
+        }
+
+        function displayKeywords() {
+            const container = document.getElementById('keywordsContainer');
+            container.innerHTML = '';
+            
+            extractedKeywords.forEach((item, idx) => {
+                // Bold keywords in the sentence
+                const boldedSentence = boldKeywordsInParagraph(item.sentence, item.keywords);
+                
+                const div = document.createElement('div');
+                div.className = 'sentence-card bg-dark-800 p-4 rounded-lg has-keywords border border-dark-600';
+                div.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <span class="flex-shrink-0 w-6 h-6 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center text-xs font-bold border border-green-500/30">${item.sentenceIndex + 1}</span>
+                        <div class="flex-1">
+                            <p class="text-slate-400 text-sm mb-2 italic">"${boldedSentence}"</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${item.keywords.map(k => `
+                                    <span class="keyword-chip inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                        ${k}
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function displayKeywordsCloud() {
+            const container = document.getElementById('keywordsCloud');
+            container.innerHTML = '';
+            
+            const colors = [
+                'from-blue-500 to-cyan-400',
+                'from-purple-500 to-pink-400',
+                'from-green-500 to-emerald-400',
+                'from-orange-500 to-amber-400',
+                'from-red-500 to-rose-400',
+                'from-indigo-500 to-violet-400'
+            ];
+            
+            allKeywordsFlat.forEach((keyword, idx) => {
+                const chip = document.createElement('div');
+                const colorClass = colors[idx % colors.length];
+                chip.className = `keyword-chip relative px-6 py-3 rounded-2xl bg-gradient-to-r ${colorClass} text-white font-semibold text-sm shadow-lg border border-white/20 cursor-default select-none`;
+                chip.innerHTML = `
+                    <span class="relative z-10 capitalize">${keyword}</span>
+                    <div class="absolute inset-0 bg-white/20 rounded-2xl opacity-0 hover:opacity-100 transition-opacity"></div>
+                `;
+                container.appendChild(chip);
+            });
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            ['mcq', 'matching', 'dragdrop'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                const content = document.getElementById(`content-${t}`);
+                if (t === tab) {
+                    btn.className = 'flex-1 rounded-lg py-2.5 px-4 text-sm font-medium text-indigo-300 bg-dark-700 shadow border border-dark-600';
+                    content.classList.remove('hidden');
+                } else {
+                    btn.className = 'flex-1 rounded-lg py-2.5 px-4 text-sm font-medium text-slate-400 hover:bg-dark-700/50 hover:text-slate-200 transition';
+                    content.classList.add('hidden');
+                }
+            });
+            
+            if (tab === 'matching') {
+                setTimeout(initCanvas, 100);
+            }
+        }
+
+        function generateMCQs() {
+            const container = document.getElementById('mcqContainer');
+            container.innerHTML = '';
+            mcqAnswers = {};
+            
+            let questionNum = 0;
+            
+            // Filter sentences that have keywords and haven't been used for MCQ
+            const availableSentences = extractedKeywords.filter(item => 
+                item.keywords.length > 0 && !usedSentencesForMCQ.has(item.sentenceIndex)
+            );
+            
+            // Shuffle and take up to 8
+            const shuffledSentences = [...availableSentences].sort(() => 0.5 - Math.random()).slice(0, 8);
+            
+            shuffledSentences.forEach(item => {
+                const availableKeyword = item.keywords[0];
+                if (!availableKeyword) return;
+                
+                questionNum++;
+                usedSentencesForMCQ.add(item.sentenceIndex);
+                
+                const questionText = item.sentence.replace(new RegExp(`\\b${availableKeyword}\\b`, 'i'), '________');
+                
+                // Use ONLY other bolded keywords as distractors
+                const otherKeywords = allKeywordsFlat.filter(k => k !== availableKeyword);
+                if (otherKeywords.length < 3) return; // Need at least 3 distractors
+                
+                const distractors = otherKeywords.sort(() => 0.5 - Math.random()).slice(0, 3);
+                const options = [availableKeyword, ...distractors].sort(() => 0.5 - Math.random());
+                
+                const qid = `mcq-${questionNum}`;
+                mcqAnswers[qid] = availableKeyword;
+
+                const card = document.createElement('div');
+                card.className = 'glass rounded-xl p-6 shadow-lg border border-dark-600';
+                card.innerHTML = `
+                    <div class="flex items-start gap-4">
+                        <span class="flex-shrink-0 w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-xl flex items-center justify-center font-bold text-lg border border-indigo-500/30">${questionNum}</span>
+                        <div class="flex-1">
+                            <p class="text-slate-200 font-medium mb-4 text-lg leading-relaxed">${questionText}</p>
+                            <div class="space-y-3" id="${qid}-opts">
+                                ${options.map(opt => `
+                                    <button onclick="selectMCQ('${qid}', '${opt}', this)" class="w-full text-left px-5 py-4 rounded-xl border border-dark-600 bg-dark-800/50 hover:bg-indigo-500/10 hover:border-indigo-500/50 transition flex justify-between items-center group">
+                                        <span class="capitalize text-slate-300 group-hover:text-indigo-300">${opt}</span>
+                                        <span class="w-6 h-6 rounded-full border-2 border-dark-600 group-hover:border-indigo-400 flex items-center justify-center transition">
+                                            <span class="w-3 h-3 rounded-full bg-indigo-500 opacity-0 transition-opacity"></span>
+                                        </span>
+                                    </button>
+                                `).join('')}
+                            </div>
+                            <div id="${qid}-fb" class="mt-3 text-sm font-medium hidden"></div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+            updateScore();
+        }
+
+        function selectMCQ(qid, answer, btn) {
+            const correct = mcqAnswers[qid];
+            const isCorrect = answer.toLowerCase() === correct.toLowerCase();
+            const fb = document.getElementById(`${qid}-fb`);
+            const opts = document.getElementById(`${qid}-opts`).children;
+            
+            Array.from(opts).forEach(opt => {
+                opt.className = 'w-full text-left px-5 py-4 rounded-xl border border-dark-600 bg-dark-800/30 opacity-50';
+                opt.querySelector('span:last-child span').classList.add('opacity-0');
+            });
+            
+            btn.className = isCorrect 
+                ? 'w-full text-left px-5 py-4 rounded-xl border-2 border-green-500 bg-green-500/10 flex justify-between items-center'
+                : 'w-full text-left px-5 py-4 rounded-xl border-2 border-red-500 bg-red-500/10 flex justify-between items-center';
+            
+            btn.querySelector('span:last-child span').classList.remove('opacity-0');
+            btn.classList.remove('opacity-50');
+            
+            fb.classList.remove('hidden');
+            fb.textContent = isCorrect ? '✓ Correct!' : `✗ Correct answer: ${correct}`;
+            fb.className = isCorrect ? 'mt-3 text-sm font-medium text-green-400' : 'mt-3 text-sm font-medium text-red-400';
+            
+            mcqAnswers[qid + '-ans'] = isCorrect;
+            updateScore();
+        }
+
+        function updateScore() {
+            const total = Object.keys(mcqAnswers).filter(k => !k.includes('-ans')).length;
+            const correct = Object.keys(mcqAnswers).filter(k => k.includes('-ans') && mcqAnswers[k]).length;
+            document.getElementById('mcq-score').textContent = `Score: ${correct}/${total}`;
+        }
+
+        function initCanvas() {
+            const area = document.getElementById('matchingArea');
+            canvas = document.getElementById('matchingCanvas');
+            ctx = canvas.getContext('2d');
+            
+            const rect = area.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            drawLines();
+        }
+
+        function drawLines() {
+            if (!ctx) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            matchingLines.forEach(line => {
+                const leftEl = document.querySelector(`[data-match-id="${line.left}"]`);
+                const rightEl = document.querySelector(`[data-match-target="${line.right}"]`);
+                
+                if (leftEl && rightEl) {
+                    const leftRect = leftEl.getBoundingClientRect();
+                    const rightRect = rightEl.getBoundingClientRect();
+                    const canvasRect = canvas.getBoundingClientRect();
+                    
+                    const x1 = leftRect.right - canvasRect.left;
+                    const y1 = leftRect.top + leftRect.height/2 - canvasRect.top;
+                    const x2 = rightRect.left - canvasRect.left;
+                    const y2 = rightRect.top + rightRect.height/2 - canvasRect.top;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.bezierCurveTo(x1 + 50, y1, x2 - 50, y2, x2, y2);
+                    ctx.strokeStyle = line.correct ? '#22c55e' : (line.checked ? '#ef4444' : '#6366f1');
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.arc(x1, y1, 5, 0, 2 * Math.PI);
+                    ctx.arc(x2, y2, 5, 0, 2 * Math.PI);
+                    ctx.fillStyle = line.correct ? '#22c55e' : (line.checked ? '#ef4444' : '#6366f1');
+                    ctx.fill();
+                }
+            });
+        }
+
+        function generateMatching() {
+            const leftCol = document.getElementById('matchingLeft');
+            const rightCol = document.getElementById('matchingRight');
+            leftCol.innerHTML = '';
+            rightCol.innerHTML = '';
+            matchingLines = [];
+            matchingPairs = [];
+            
+            const selected = [];
+            
+            // Filter sentences where the first word is a keyword and hasn't been used for matching
+            for (let item of extractedKeywords) {
+                if (selected.length >= 6) break;
+                if (usedSentencesForMatching.has(item.sentenceIndex)) continue;
+                
+                // Check if sentence starts with any keyword
+                const firstWord = item.sentence.split(' ')[0].toLowerCase().replace(/[.,;:!?]/g, '');
+                const isFirstWordKeyword = item.keywords.some(keyword => 
+                    keyword.toLowerCase().includes(firstWord) || firstWord.includes(keyword.toLowerCase())
+                );
+                
+                const keyword = item.keywords[0];
+                if (keyword && isFirstWordKeyword) {
+                    selected.push({
+                        keyword: keyword,
+                        sentence: item.sentence,
+                        id: selected.length
+                    });
+                    usedSentencesForMatching.add(item.sentenceIndex);
+                }
+            }
+            
+            // If we don't have enough sentences starting with keywords, use regular sentences
+            if (selected.length < 3) {
+                for (let item of extractedKeywords) {
+                    if (selected.length >= 6) break;
+                    if (usedSentencesForMatching.has(item.sentenceIndex)) continue;
+                    
+                    const keyword = item.keywords[0];
+                    if (keyword) {
+                        selected.push({
+                            keyword: keyword,
+                            sentence: item.sentence,
+                            id: selected.length
+                        });
+                        usedSentencesForMatching.add(item.sentenceIndex);
+                    }
+                }
+            }
+            
+            matchingPairs = selected;
+            const shuffled = [...selected].sort(() => 0.5 - Math.random());
+            
+            selected.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.className = 'matching-item glass p-4 rounded-xl border border-dark-600 bg-dark-800/50 flex items-center gap-3';
+                div.setAttribute('data-match-id', idx);
+                div.onclick = () => selectLeft(idx, div);
+                div.innerHTML = `
+                    <span class="w-8 h-8 bg-purple-500/20 text-purple-400 rounded-lg flex items-center justify-center font-bold border border-purple-500/30">${String.fromCharCode(65 + idx)}</span>
+                    <span class="font-medium text-slate-200 capitalize">${item.keyword}</span>
+                `;
+                leftCol.appendChild(div);
+            });
+            
+            shuffled.forEach((item, idx) => {
+                const originalIndex = selected.findIndex(s => s.keyword === item.keyword);
+                let desc = item.sentence.replace(new RegExp(`\\b${item.keyword}\\b`, 'i'), '________');
+                if (desc.length > 120) desc = desc.substring(0, 120) + '...';
+                
+                const div = document.createElement('div');
+                div.className = 'matching-target glass p-4 rounded-xl border border-dark-600 bg-dark-800/50 flex items-center gap-3';
+                div.setAttribute('data-match-target', originalIndex);
+                div.onclick = () => selectRight(originalIndex, div);
+                div.innerHTML = `<span class="text-slate-400 text-sm leading-relaxed">${desc}</span>`;
+                rightCol.appendChild(div);
+            });
+            
+            setTimeout(initCanvas, 100);
+        }
+
+        function selectLeft(index, element) {
+            if (selectedLeft === index) {
+                selectedLeft = null;
+                element.classList.remove('selected');
+            } else {
+                document.querySelectorAll('.matching-item').forEach(el => el.classList.remove('selected'));
+                selectedLeft = index;
+                element.classList.add('selected');
+            }
+        }
+
+        function selectRight(index, element) {
+            if (selectedLeft === null) return;
+            
+            matchingLines = matchingLines.filter(l => l.left !== selectedLeft);
+            
+            matchingLines.push({
+                left: selectedLeft,
+                right: index,
+                correct: false,
+                checked: false
+            });
+            
+            document.querySelectorAll('.matching-item').forEach(el => el.classList.remove('selected'));
+            selectedLeft = null;
+            drawLines();
+        }
+
+        function clearMatching() {
+            matchingLines = [];
+            document.querySelectorAll('.matching-item, .matching-target').forEach(el => {
+                el.classList.remove('selected', 'matched');
+            });
+            drawLines();
+        }
+
+        function checkMatchingLines() {
+            let correct = 0;
+            matchingLines.forEach(line => {
+                line.checked = true;
+                line.correct = line.left === line.right;
+                if (line.correct) correct++;
+            });
+            
+            document.querySelectorAll('.matching-item').forEach((el, idx) => {
+                const line = matchingLines.find(l => l.left === idx);
+                if (line && line.correct) {
+                    el.classList.add('matched');
+                }
+            });
+            
+            document.querySelectorAll('.matching-target').forEach((el, idx) => {
+                const line = matchingLines.find(l => l.right === idx && l.correct);
+                if (line) {
+                    el.classList.add('matched');
+                }
+            });
+            
+            drawLines();
+            alert(`${correct}/${matchingPairs.length} correct matches!`);
+        }
+
+        function generateDragDrop() {
+            const container = document.getElementById('dragDropContainer');
+            const bank = document.getElementById('draggablesContainer');
+            container.innerHTML = '';
+            bank.innerHTML = '';
+            
+            const selected = [];
+            
+            // Find sentences that haven't been used for drag & drop
+            for (let item of extractedKeywords) {
+                if (selected.length >= 4) break;
+                if (usedSentencesForDragDrop.has(item.sentenceIndex)) continue;
+                
+                const keyword = item.keywords[0];
+                if (keyword) {
+                    selected.push({
+                        keyword: keyword,
+                        sentence: item.sentence,
+                        sentenceIndex: item.sentenceIndex
+                    });
+                    usedSentencesForDragDrop.add(item.sentenceIndex);
+                }
+            }
+            
+            selected.forEach((item, idx) => {
+                // Use the full sentence as is, with the keyword replaced by blank
+                const escapedKeyword = item.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`\\b(${escapedKeyword})\\b`, 'i');
+                const parts = item.sentence.split(regex);
+                
+                if (parts.length >= 3) {
+                    container.innerHTML += `
+                        <div class="glass p-5 rounded-xl border border-dark-600 bg-dark-800/30">
+                            <span class="text-indigo-400 mr-2 font-bold text-lg">${idx + 1}.</span>
+                            <span class="text-slate-300">${parts[0]}</span>
+                            <span class="drop-zone inline-block min-w-[160px] px-4 py-2 mx-2 rounded-lg bg-dark-900 text-center text-slate-500 font-medium border-2 border-dashed border-dark-600" 
+                                  data-ans="${item.keyword.toLowerCase()}" 
+                                  ondrop="drop(event)" 
+                                  ondragover="allowDrop(event)">?</span>
+                            <span class="text-slate-300">${parts[2]}</span>
+                        </div>
+                    `;
+                }
+            });
+            
+            // Use ONLY the extracted bolded keywords for the word bank
+            const bankKeywords = [...allKeywordsFlat];
+            bankKeywords.sort(() => 0.5 - Math.random()).forEach(noun => {
+                const div = document.createElement('div');
+                div.className = 'draggable glass bg-dark-800 border-2 border-indigo-500/30 text-indigo-300 px-5 py-3 rounded-xl font-medium cursor-move shadow-lg hover:border-indigo-400 hover:text-indigo-200 transition capitalize';
+                div.draggable = true;
+                div.textContent = noun;
+                div.ondragstart = (e) => {
+                    e.dataTransfer.setData('text', e.target.textContent);
+                    e.target.classList.add('dragging');
+                };
+                div.ondragend = (e) => e.target.classList.remove('dragging');
+                bank.appendChild(div);
+            });
+        }
+
+        function allowDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function drop(e) {
+            e.preventDefault();
+            const zone = e.currentTarget;
+            zone.classList.remove('drag-over');
+            const data = e.dataTransfer.getData('text');
+            
+            const existing = zone.querySelector('.draggable');
+            if (existing) document.getElementById('draggablesContainer').appendChild(existing);
+            
+            const div = document.createElement('div');
+            div.className = 'draggable bg-indigo-600 text-white px-3 py-1 rounded-lg text-sm inline-block shadow-lg';
+            div.draggable = true;
+            div.textContent = data;
+            div.ondragstart = (e) => {
+                e.dataTransfer.setData('text', e.target.textContent);
+                e.target.classList.add('dragging');
+            };
+            div.ondragend = (e) => e.target.classList.remove('dragging');
+            zone.innerHTML = '';
+            zone.appendChild(div);
+        }
+
+        function checkDragDrop() {
+            let correct = 0;
+            const zones = document.querySelectorAll('#dragDropContainer .drop-zone');
+            zones.forEach(zone => {
+                const ans = zone.getAttribute('data-ans');
+                const placed = zone.querySelector('.draggable');
+                zone.classList.remove('correct', 'incorrect');
+                if (placed && placed.textContent.toLowerCase() === ans) {
+                    zone.classList.add('correct');
+                    zone.innerHTML = `<span class="text-green-400 font-medium">${placed.textContent}</span>`;
+                    correct++;
+                } else {
+                    zone.classList.add('incorrect');
+                    if (placed) zone.appendChild(placed);
+                }
+            });
+            alert(`${correct}/${zones.length} correct!`);
+        }
+
+        async function saveAsPDF() {
+            const { jsPDF } = window.jspdf;
+            
+            const btn = document.querySelector('button[onclick="saveAsPDF()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = 'Generating PDF...';
+            btn.disabled = true;
+
+            try {
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const margin = 15;
+
+                const totalMCQ = Object.keys(mcqAnswers).filter(k => !k.includes('-ans')).length;
+                const correctMCQ = Object.keys(mcqAnswers).filter(k => k.includes('-ans') && mcqAnswers[k]).length;
+                
+                const correctMatching = matchingLines.filter(l => l.correct).length;
+                const totalMatching = matchingPairs.length;
+                
+                const ddZones = document.querySelectorAll('#dragDropContainer .drop-zone');
+                let correctDD = 0;
+                ddZones.forEach(zone => {
+                    const placed = zone.querySelector('.draggable');
+                    if (placed && placed.textContent.toLowerCase() === zone.getAttribute('data-ans')) {
+                        correctDD++;
+                    }
+                });
+                const totalDD = ddZones.length;
+                
+                const totalQuestions = totalMCQ + totalMatching + totalDD;
+                const totalCorrect = correctMCQ + correctMatching + correctDD;
+
+                pdf.setFillColor(15, 23, 42);
+                pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                
+                pdf.setFillColor(79, 70, 229);
+                pdf.rect(0, 0, pageWidth, 40, 'F');
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFontSize(24);
+                pdf.text('Quiz Results Summary', margin, 28);
+                
+                pdf.setFontSize(10);
+                pdf.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin - 50, 28);
+
+                let yPos = 60;
+
+                pdf.setFillColor(30, 41, 59);
+                pdf.roundedRect(margin, yPos, pageWidth - 2*margin, 40, 5, 5, 'F');
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFontSize(16);
+                pdf.text(`Total Questions: ${totalQuestions}`, margin + 10, yPos + 25);
+                pdf.setTextColor(34, 197, 94);
+                pdf.setFontSize(20);
+                pdf.text(`Correct: ${totalCorrect}`, pageWidth/2 + 20, yPos + 25);
+                
+                yPos += 60;
+
+                const sections = [
+                    { name: 'Multiple Choice', correct: correctMCQ, total: totalMCQ, color: [99, 102, 241] },
+                    { name: 'Matching', correct: correctMatching, total: totalMatching, color: [168, 85, 247] },
+                    { name: 'Fill in Blanks', correct: correctDD, total: totalDD, color: [34, 197, 94] }
+                ];
+
+                sections.forEach(section => {
+                    if (section.total === 0) return;
+                    
+                    pdf.setFillColor(30, 41, 59);
+                    pdf.roundedRect(margin, yPos, pageWidth - 2*margin, 30, 5, 5, 'F');
+                    
+                    pdf.setTextColor(...section.color);
+                    pdf.setFontSize(14);
+                    pdf.text(section.name, margin + 10, yPos + 12);
+                    
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.setFontSize(12);
+                    const percentage = section.total > 0 ? Math.round((section.correct/section.total)*100) : 0;
+                    pdf.text(`${section.correct}/${section.total} correct (${percentage}%)`, margin + 10, yPos + 24);
+                    
+                    const barWidth = (pageWidth - 2*margin - 20) * (section.correct/section.total);
+                    pdf.setFillColor(...section.color);
+                    pdf.rect(margin + 10, yPos + 26, barWidth, 3, 'F');
+                    
+                    yPos += 40;
+                });
+
+                yPos += 10;
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFontSize(16);
+                pdf.text('All Keywords:', margin, yPos);
+                yPos += 10;
+                
+                pdf.setFontSize(10);
+                pdf.setTextColor(200, 200, 200);
+                let xPos = margin;
+                allKeywordsFlat.forEach((keyword, idx) => {
+                    if (xPos > pageWidth - 40) {
+                        xPos = margin;
+                        yPos += 8;
+                    }
+                    pdf.text(`• ${keyword}`, xPos, yPos);
+                    xPos += 35;
+                });
+
+                pdf.addPage();
+                pdf.setFillColor(15, 23, 42);
+                pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                
+                pdf.setFillColor(99, 102, 241);
+                pdf.rect(0, 0, pageWidth, 25, 'F');
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFontSize(18);
+                pdf.text('Multiple Choice Questions', margin, 17);
+                
+                yPos = 35;
+                pdf.setFontSize(11);
+                
+                const mcqContainer = document.getElementById('mcqContainer');
+                const mcqs = mcqContainer.querySelectorAll('.glass');
+                
+                mcqs.forEach((mcq, idx) => {
+                    if (yPos > pageHeight - 50) {
+                        pdf.addPage();
+                        pdf.setFillColor(15, 23, 42);
+                        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                        yPos = 20;
+                    }
+                    
+                    const num = mcq.querySelector('span.font-bold').textContent;
+                    const question = mcq.querySelector('p.font-medium').textContent;
+                    const options = mcq.querySelectorAll('button');
+                    
+                    pdf.setTextColor(255, 255, 255);
+                    const splitQ = pdf.splitTextToSize(`${num}. ${question}`, pageWidth - 2*margin);
+                    pdf.text(splitQ, margin, yPos);
+                    yPos += splitQ.length * 5 + 3;
+                    
+                    options.forEach((opt, optIdx) => {
+                        const text = opt.querySelector('span.capitalize').textContent;
+                        const isCorrect = opt.classList.contains('border-green-500');
+                        const isWrong = opt.classList.contains('border-red-500');
+                        const isSelected = isCorrect || isWrong;
+                        
+                        if (isCorrect) pdf.setTextColor(34, 197, 94);
+                        else if (isWrong) pdf.setTextColor(239, 68, 68);
+                        else pdf.setTextColor(150, 150, 150);
+                        
+                        const marker = isSelected ? (isCorrect ? '✓ ' : '✗ ') : '  ';
+                        pdf.text(`${marker}${String.fromCharCode(97 + optIdx)}) ${text}`, margin + 5, yPos);
+                        yPos += 5;
+                    });
+                    
+                    yPos += 5;
+                });
+
+                if (matchingPairs.length > 0) {
+                    pdf.addPage();
+                    pdf.setFillColor(15, 23, 42);
+                    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                    
+                    pdf.setFillColor(168, 85, 247);
+                    pdf.rect(0, 0, pageWidth, 25, 'F');
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.setFontSize(18);
+                    pdf.text('Matching Questions', margin, 17);
+                    
+                    yPos = 35;
+                    
+                    const leftItems = matchingPairs;
+                    const lineHeight = 25;
+                    
+                    leftItems.forEach((item, idx) => {
+                        if (yPos > pageHeight - 30) {
+                            pdf.addPage();
+                            pdf.setFillColor(15, 23, 42);
+                            pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                            yPos = 20;
+                        }
+                        
+                        pdf.setFillColor(30, 41, 59);
+                        pdf.roundedRect(margin, yPos - 8, 60, 20, 3, 3, 'F');
+                        pdf.setTextColor(255, 255, 255);
+                        pdf.setFontSize(11);
+                        pdf.text(`${String.fromCharCode(65 + idx)}. ${item.keyword}`, margin + 5, yPos + 5);
+                        
+                        const line = matchingLines.find(l => l.left === idx);
+                        const rightText = line ? matchingPairs[line.right].sentence.replace(item.keyword, '____').substring(0, 50) + '...' : 'Not matched';
+                        
+                        if (line) {
+                            pdf.setDrawColor(line.correct ? 34 : 239, line.correct ? 197 : 68, line.correct ? 94 : 68);
+                            pdf.setLineWidth(1);
+                            pdf.line(margin + 60, yPos, pageWidth - margin - 80, yPos + (line.right - idx) * lineHeight);
+                        }
+                        
+                        pdf.setFillColor(30, 41, 59);
+                        pdf.roundedRect(pageWidth - margin - 80, yPos - 8 + (line ? (line.right - idx) * lineHeight : 0), 80, 20, 3, 3, 'F');
+                        
+                        if (line && line.correct) pdf.setTextColor(34, 197, 94);
+                        else if (line) pdf.setTextColor(239, 68, 68);
+                        else pdf.setTextColor(150, 150, 150);
+                        
+                        pdf.setFontSize(9);
+                        pdf.text(rightText, pageWidth - margin - 75, yPos + 5 + (line ? (line.right - idx) * lineHeight : 0));
+                        
+                        yPos += lineHeight;
+                    });
+                }
+
+                if (totalDD > 0) {
+                    pdf.addPage();
+                    pdf.setFillColor(15, 23, 42);
+                    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                    
+                    pdf.setFillColor(34, 197, 94);
+                    pdf.rect(0, 0, pageWidth, 25, 'F');
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.setFontSize(18);
+                    pdf.text('Fill in the Blanks', margin, 17);
+                    
+                    yPos = 35;
+                    pdf.setFontSize(11);
+                    
+                    const ddContainer = document.getElementById('dragDropContainer');
+                    const blanks = ddContainer.querySelectorAll('.glass');
+                    
+                    blanks.forEach((blank, idx) => {
+                        if (yPos > pageHeight - 40) {
+                            pdf.addPage();
+                            pdf.setFillColor(15, 23, 42);
+                            pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+                            yPos = 20;
+                        }
+                        
+                        const text = blank.textContent;
+                        const parts = text.split('?');
+                        
+                        pdf.setTextColor(255, 255, 255);
+                        pdf.text(`${idx + 1}. ${parts[0]}`, margin, yPos);
+                        yPos += 6;
+                        
+                        const dropZone = blank.querySelector('.drop-zone');
+                        const hasAnswer = dropZone && dropZone.querySelector('.draggable');
+                        const isCorrect = dropZone && dropZone.classList.contains('correct');
+                        
+                        if (hasAnswer) {
+                            const answer = hasAnswer.textContent;
+                            pdf.setTextColor(isCorrect ? 34 : 239, isCorrect ? 197 : 68, isCorrect ? 94 : 68);
+                            pdf.text(`   Answer: ${answer}`, margin, yPos);
+                        } else {
+                            pdf.setTextColor(150, 150, 150);
+                            pdf.text(`   Answer: (not attempted)`, margin, yPos);
+                        }
+                        yPos += 10;
+                    });
+                }
+
+                pdf.save('quiz-results.pdf');
+                
+            } catch (error) {
+                console.error('PDF generation error:', error);
+                alert('Error generating PDF. Please try again.');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            if (currentTab === 'matching') {
+                setTimeout(initCanvas, 100);
+            }
         });
     </script>
 </body>
 </html>
-
