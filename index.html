@@ -754,41 +754,82 @@
             return fullText;
         }
 
-        async function loadSampleFile() {
-            const loading = document.getElementById('uploadLoading');
-            const status = document.getElementById('extractionStatus');
-            
-            loading.classList.remove('hidden');
-            status.classList.add('hidden');
-            
-            try {
-                // For sample, use the hardcoded sample text with **bold** markers
-                const sampleText = "**Photosynthesis** is the process used by plants to convert sunlight into chemical energy. **Chlorophyll** is the green pigment that captures light energy. The process takes place in **chloroplasts**. There are two stages: the light reactions and the **Calvin cycle**. During the light reactions, water molecules are split to produce **oxygen gas**. The Calvin cycle uses **carbon dioxide** from the atmosphere to make **glucose**. **ATP** and **NADPH** are energy carriers produced during the light reactions. The **thylakoid membranes** contain photosystems that absorb sunlight. **Cellular respiration** is another important process. **Mitochondria** are the powerhouses of the cell. The **Krebs cycle** produces energy molecules. **Electron transport chain** is the final stage.";
-                
-                // Extract bolded keywords from sample
-                boldedKeywords = extractBoldedKeywordsFromSample(sampleText);
-                
-                const proseText = cleanAndFilterProse(sampleText, boldedKeywords);
-                
-                if (!proseText || proseText.trim().length < 50) {
-                    alert('No valid prose found in sample.');
-                    loading.classList.add('hidden');
-                    return;
-                }
-                
-                document.getElementById('inputText').value = sampleText;
-                document.getElementById('charCount').textContent = sampleText.length + ' characters';
-                
-                status.classList.remove('hidden');
-                setTimeout(() => status.classList.add('hidden'), 3000);
-                
-            } catch (error) {
-                console.error('Sample load error:', error);
-                alert('Could not load sample: ' + error.message);
-            } finally {
-                loading.classList.add('hidden');
+       async function loadSampleFile() {
+    const loading = document.getElementById('uploadLoading');
+    const status = document.getElementById('extractionStatus');
+    
+    loading.classList.remove('hidden');
+    status.classList.add('hidden');
+    
+    try {
+        console.log('Loading WEEK 2.docx...');
+        
+        // Fetch the actual WEEK 2.docx file from the same directory
+        const response = await fetch('WEEK%202.docx'); // URL encoded space
+        if (!response.ok) {
+            // Try without URL encoding as fallback
+            const response2 = await fetch('WEEK 2.docx');
+            if (!response2.ok) {
+                throw new Error(`Failed to load WEEK 2.docx: ${response2.status} ${response2.statusText}`);
             }
+            // Use the second response
+            const fileBlob = await response2.blob();
+            const file = new File([fileBlob], 'WEEK 2.docx', { 
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+            });
+            
+            console.log('File loaded successfully (without URL encoding)');
+            await processFile(file);
+        } else {
+            // Use the first response
+            const fileBlob = await response.blob();
+            const file = new File([fileBlob], 'WEEK 2.docx', { 
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+            });
+            
+            console.log('File loaded successfully (with URL encoding)');
+            await processFile(file);
         }
+        
+        status.classList.remove('hidden');
+        setTimeout(() => status.classList.add('hidden'), 3000);
+        
+    } catch (error) {
+        console.error('Sample file load error:', error);
+        
+        // Show a more detailed error message
+        const errorMsg = `Could not load WEEK 2.docx: ${error.message}\n\nMake sure:
+        1. "WEEK 2.docx" is in the same folder as this HTML file
+        2. You're running on a local server (not file:// protocol)
+        3. The file name matches exactly "WEEK 2.docx"
+        
+        Using sample text instead.`;
+        
+        console.warn(errorMsg);
+        alert(errorMsg);
+        
+        // Fallback to hardcoded sample
+        const sampleText = "**Photosynthesis** is the process used by plants to convert sunlight into chemical energy. **Chlorophyll** is the green pigment that captures light energy. The process takes place in **chloroplasts**. There are two stages: the light reactions and the **Calvin cycle**. During the light reactions, water molecules are split to produce **oxygen gas**. The Calvin cycle uses **carbon dioxide** from the atmosphere to make **glucose**. **ATP** and **NADPH** are energy carriers produced during the light reactions. The **thylakoid membranes** contain photosystems that absorb sunlight. **Cellular respiration** is another important process. **Mitochondria** are the powerhouses of the cell. The **Krebs cycle** produces energy molecules. **Electron transport chain** is the final stage.";
+        
+        boldedKeywords = extractBoldedKeywordsFromSample(sampleText);
+        
+        const proseText = cleanAndFilterProse(sampleText, boldedKeywords);
+        
+        if (!proseText || proseText.trim().length < 50) {
+            alert('No valid prose found in sample.');
+            loading.classList.add('hidden');
+            return;
+        }
+        
+        document.getElementById('inputText').value = sampleText;
+        document.getElementById('charCount').textContent = sampleText.length + ' characters';
+        
+        status.classList.remove('hidden');
+        setTimeout(() => status.classList.add('hidden'), 3000);
+    } finally {
+        loading.classList.add('hidden');
+    }
+}
 
         function extractBoldedKeywordsFromSample(text) {
             const foundKeywords = new Set();
